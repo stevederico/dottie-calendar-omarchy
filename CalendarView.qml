@@ -72,7 +72,9 @@ Item {
   readonly property string contentFontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property var labelLocale: Qt.locale("en_US")
 
-  readonly property int sidebarWidth: Style.space(220)
+  property bool sidebarCollapsed: false
+  readonly property int sidebarWidth: Style.space(160)
+  readonly property int sidebarRailWidth: Style.space(36)
   readonly property int cellSpacing: Style.space(6)
   readonly property int weekColumnWidth: Style.space(36)
   readonly property int gutterWidth: Style.space(20)
@@ -196,7 +198,13 @@ Item {
     calProc.running = true
   }
 
+  function setSidebarCollapsed(collapsed) {
+    if (collapsed && root.addingCalendar) root.closeAddForm()
+    root.sidebarCollapsed = collapsed
+  }
+
   function openAddForm() {
+    root.sidebarCollapsed = false
     root.addingCalendar = true
     root.statusText = ""
     Qt.callLater(function () { urlField.forceActiveFocus() })
@@ -313,7 +321,12 @@ Item {
     anchors.left: parent.left
     anchors.top: parent.top
     anchors.bottom: parent.bottom
-    width: root.sidebarWidth
+    width: root.sidebarCollapsed ? root.sidebarRailWidth : root.sidebarWidth
+    clip: true
+
+    Behavior on width {
+      NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+    }
 
     Item {
       id: sideHeadingRow
@@ -323,31 +336,88 @@ Item {
       height: headerActions.height
 
       Text {
-        id: sideHeading
+        id: collapseGlyph
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
-        text: "CALENDARS"
-        color: Qt.darker(root.contentForeground, 1.5)
+        width: root.sidebarCollapsed ? parent.width : Style.space(18)
+        height: Style.space(18)
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+        text: root.sidebarCollapsed ? "›" : "‹"
+        color: collapseMouse.containsMouse
+          ? root.contentForeground
+          : Qt.darker(root.contentForeground, 1.45)
         font.family: root.contentFontFamily
-        font.pixelSize: Style.font.caption
-        font.letterSpacing: 1.6
+        font.pixelSize: Style.font.body
+        font.bold: true
+
+        MouseArea {
+          id: collapseMouse
+          anchors.fill: parent
+          anchors.margins: -Style.space(6)
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.setSidebarCollapsed(!root.sidebarCollapsed)
+        }
       }
 
       Text {
+        id: addGlyph
+        visible: !root.sidebarCollapsed
+        anchors.right: syncGlyph.left
+        anchors.rightMargin: Style.space(2)
+        anchors.verticalCenter: parent.verticalCenter
+        width: Style.space(18)
+        height: Style.space(18)
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+        text: root.addingCalendar ? "−" : "+"
+        color: addGlyphMouse.containsMouse || root.addingCalendar
+          ? root.contentForeground
+          : Qt.darker(root.contentForeground, 1.45)
+        font.family: root.contentFontFamily
+        font.pixelSize: Style.font.body
+        font.bold: true
+
+        MouseArea {
+          id: addGlyphMouse
+          anchors.fill: parent
+          anchors.margins: -Style.space(6)
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.addingCalendar ? root.closeAddForm() : root.openAddForm()
+        }
+      }
+
+      Text {
+        id: syncGlyph
+        visible: !root.sidebarCollapsed
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        text: root.busy ? "Syncing…" : "Sync"
-      color: syncMouse.containsMouse
-        ? Style.hoverStateColor(root.contentForeground, Color.accent)
-        : Qt.darker(root.contentForeground, 1.45)
-      font.family: root.contentFontFamily
-      font.pixelSize: Style.font.caption
-      font.letterSpacing: 0.6
-      font.bold: true
+        width: Style.space(18)
+        height: Style.space(18)
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+        text: "󰑐"
+        color: syncMouse.containsMouse
+          ? Style.hoverStateColor(root.contentForeground, Color.accent)
+          : Qt.darker(root.contentForeground, 1.45)
+        font.family: root.contentFontFamily
+        font.pixelSize: Style.font.icon
+
+        RotationAnimation on rotation {
+          running: root.busy
+          loops: Animation.Infinite
+          from: 0
+          to: 360
+          duration: 800
+          onRunningChanged: if (!running) syncGlyph.rotation = 0
+        }
 
         MouseArea {
           id: syncMouse
           anchors.fill: parent
+          anchors.margins: -Style.space(6)
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: root.runCal(["sync"])
@@ -367,9 +437,14 @@ Item {
         model: root.calendars
 
         Item {
+          id: calRow
           required property var modelData
           width: calendarList.width
           height: Style.space(28)
+
+          HoverHandler {
+            id: rowHover
+          }
 
           Rectangle {
             anchors.fill: parent
@@ -382,7 +457,7 @@ Item {
           Rectangle {
             id: calDot
             anchors.left: parent.left
-            anchors.leftMargin: Style.space(6)
+            anchors.leftMargin: root.sidebarCollapsed ? Math.max(0, (parent.width - width) / 2) : Style.space(6)
             anchors.verticalCenter: parent.verticalCenter
             width: Style.space(8)
             height: Style.space(8)
@@ -392,6 +467,7 @@ Item {
           }
 
           Text {
+            visible: !root.sidebarCollapsed
             anchors.left: calDot.right
             anchors.leftMargin: Style.space(10)
             anchors.right: infoGlyph.left
@@ -407,10 +483,11 @@ Item {
 
           Text {
             id: infoGlyph
+            visible: !root.sidebarCollapsed && rowHover.hovered
             anchors.right: parent.right
             anchors.rightMargin: Style.space(2)
             anchors.verticalCenter: parent.verticalCenter
-            width: Style.space(18)
+            width: visible ? Style.space(18) : 0
             height: Style.space(18)
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
@@ -437,7 +514,7 @@ Item {
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            anchors.right: infoGlyph.left
+            anchors.right: root.sidebarCollapsed ? parent.right : infoGlyph.left
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: root.runCal(["toggle", modelData.id])
@@ -446,7 +523,7 @@ Item {
       }
 
       Text {
-        visible: root.calendars.length === 0
+        visible: root.calendars.length === 0 && !root.sidebarCollapsed
         text: "Local only"
         color: Qt.darker(root.contentForeground, 1.85)
         font.family: root.contentFontFamily
@@ -462,22 +539,17 @@ Item {
       spacing: Style.space(8)
 
       Item {
+        visible: root.sidebarCollapsed
         width: parent.width
-        height: Style.space(28)
-
-        Rectangle {
-          anchors.fill: parent
-          color: addMouse.containsMouse || root.addingCalendar
-            ? Style.hoverFillFor(root.contentForeground, Color.accent)
-            : "transparent"
-        }
+        height: visible ? Style.space(28) : 0
 
         Text {
           anchors.left: parent.left
-          anchors.leftMargin: Style.space(6)
+          anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          text: root.addingCalendar ? "−  Cancel" : "+  Add Calendar"
-          color: addMouse.containsMouse || root.addingCalendar
+          horizontalAlignment: Text.AlignHCenter
+          text: "+"
+          color: addMouse.containsMouse
             ? root.contentForeground
             : Qt.darker(root.contentForeground, 1.45)
           font.family: root.contentFontFamily
@@ -489,7 +561,11 @@ Item {
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
-          onClicked: root.addingCalendar ? root.closeAddForm() : root.openAddForm()
+          onClicked: {
+            if (root.sidebarCollapsed) root.openAddForm()
+            else if (root.addingCalendar) root.closeAddForm()
+            else root.openAddForm()
+          }
         }
       }
 
@@ -594,7 +670,7 @@ Item {
 
       Text {
         width: sidebar.width
-        visible: root.statusText !== ""
+        visible: root.statusText !== "" && !root.sidebarCollapsed
         text: root.statusText
         wrapMode: Text.Wrap
         color: Qt.darker(root.contentForeground, 1.45)
@@ -607,7 +683,7 @@ Item {
   Item {
     id: main
     anchors.left: sidebar.right
-    anchors.leftMargin: Style.space(32)
+    anchors.leftMargin: Style.space(16)
     anchors.right: parent.right
     anchors.top: parent.top
     anchors.bottom: parent.bottom
@@ -783,7 +859,7 @@ Item {
             width: Math.round(parent.width * root.yearDone)
             height: parent.height
             radius: parent.radius
-            color: Style.selectedStateColor(root.contentForeground, Color.accent)
+            color: Qt.rgba(root.contentForeground.r, root.contentForeground.g, root.contentForeground.b, 0.34)
           }
         }
       }
@@ -795,7 +871,13 @@ Item {
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.bottom: parent.bottom
-      height: visible ? Math.max(Style.space(180), Math.round(root.height * 0.24)) : 0
+      height: {
+        if (!visible) return 0
+        var rows = Math.max(1, root.selectedEvents.length)
+        var content = Style.space(20) + dayHeading.implicitHeight + Style.space(14)
+          + rows * Style.space(44) + Math.max(0, rows - 1) * Style.space(6) + Style.space(8)
+        return Math.min(Math.round(root.height * 0.28), content)
+      }
 
       Rectangle {
         anchors.top: parent.top
@@ -880,11 +962,11 @@ Item {
     Item {
       id: bodyHost
       anchors.top: header.bottom
-      anchors.topMargin: Style.space(28)
+      anchors.topMargin: Style.space(16)
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.bottom: dayPane.visible ? dayPane.top : parent.bottom
-      anchors.bottomMargin: Style.space(20)
+      anchors.bottomMargin: Style.space(8)
 
       WheelHandler {
         enabled: root.viewMode === "month" || root.viewMode === "year"

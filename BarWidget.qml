@@ -4,7 +4,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// Almanac Calendar mark in the bar. Click opens the window app.
+// Dottie Calendar mark in the bar. Click opens the window app.
 BarWidget {
   id: root
   moduleName: "sd.calendar"
@@ -24,6 +24,24 @@ BarWidget {
 
   IpcHandler {
     target: "sd.calendar"
+    function open(): void { root.open() }
+    function close(): void { root.close() }
+    function show(): void { root.open() }
+    function hide(): void { root.close() }
+    function toggle(): void { root.toggle() }
+  }
+
+  IpcHandler {
+    target: "dottie"
+    function open(): void { root.open() }
+    function close(): void { root.close() }
+    function show(): void { root.open() }
+    function hide(): void { root.close() }
+    function toggle(): void { root.toggle() }
+  }
+
+  IpcHandler {
+    target: "dot"
     function open(): void { root.open() }
     function close(): void { root.close() }
     function show(): void { root.open() }
@@ -54,7 +72,7 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: "󰃭"
-    tooltipText: "Almanac Calendar"
+    tooltipText: "Dottie Calendar"
     onPressed: function (b) {
       if (b === Qt.LeftButton || b === Qt.RightButton) root.openWindow()
     }

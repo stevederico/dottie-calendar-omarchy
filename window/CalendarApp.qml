@@ -39,7 +39,7 @@ Item {
 
   FloatingWindow {
     id: window
-    title: "Almanac Calendar"
+    title: "Dottie Calendar"
     visible: false
     color: Color.background
     implicitWidth: 1400
@@ -65,9 +65,9 @@ Item {
 
     Loader {
       id: viewLoader
-      readonly property int insetX: Style.space(56)
-      readonly property int insetTop: Style.space(32)
-      readonly property int insetBottom: Style.space(40)
+      readonly property int insetX: Style.space(16)
+      readonly property int insetTop: Style.space(12)
+      readonly property int insetBottom: Style.space(12)
       x: insetX
       y: insetTop
       width: Math.max(0, window.width - insetX * 2)

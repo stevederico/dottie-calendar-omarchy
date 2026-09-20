@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "id": "sd.calendar",
-  "name": "Almanac Calendar",
-  "version": "0.2.0",
+  "name": "Dottie Calendar",
+  "version": "0.2.1",
   "author": "sd",
   "license": "MIT",
-  "description": "Almanac Calendar. Day, week, month, year. Local events plus ICS feeds. Search almanac or calendar.",
+  "description": "Dottie Calendar. Day, week, month, year. Local events plus ICS feeds. Search dottie or calendar.",
   "kinds": [
     "bar-widget",
     "panel"
@@ -16,12 +16,14 @@
     "panel": "window/CalendarApp.qml"
   },
   "barWidget": {
-    "displayName": "Almanac Calendar",
-    "description": "Open Almanac Calendar from the bar",
+    "displayName": "Dottie Calendar",
+    "description": "Open Dottie Calendar from the bar",
     "category": "Time",
     "aliases": [
-      "almanac",
+      "dottie",
+      "dot",
       "calendar",
+      "almanac",
       "agenda"
     ],
     "allowMultiple": false,

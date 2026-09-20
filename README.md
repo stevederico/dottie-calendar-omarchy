@@ -1,8 +1,8 @@
-# Almanac Calendar
+# Dottie Calendar
 
 Omarchy calendar app. Day, week, month, and year. Local events plus ICS feeds.
 
-Launch as **almanac** or **calendar**. Plugin id is `sd.calendar`.
+Launch as **dottie** or **calendar**. Plugin id is `sd.calendar`.
 
 ## Install
 
