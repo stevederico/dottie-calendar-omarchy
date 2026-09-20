@@ -1,3 +1,7 @@
+0.2.2
+
+  Update install URL for rename
+
 0.2.1
 
   Rename the app to Dottie Calendar

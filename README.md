@@ -9,7 +9,7 @@ Launch as **dottie** or **calendar**. Plugin id is `sd.calendar`.
 Review the plugin, then enable it. Omarchy plugins run unsandboxed inside `omarchy-shell`.
 
 ```sh
-omarchy plugin add https://github.com/stevederico/almanac-calendar.git
+omarchy plugin add https://github.com/stevederico/dottie-calendar-omarchy.git
 omarchy plugin enable sd.calendar --section right
 ```
 
