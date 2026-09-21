@@ -130,15 +130,22 @@ except Exception:
     sys.exit(1)
 sys.stdout.write(str(data.get("feed") or "plain") if isinstance(data, dict) else "plain")') || fail "Almanac request failed"
   if [[ $FEED == seal ]]; then
-    BIN="${ALMANAC_BIN:-}"
+    supports_seal() {
+      [[ -x $1 ]] && strings "$1" | grep -q 'almanac-seal-v1'
+    }
+    BIN=""
+    if [[ -n ${ALMANAC_BIN:-} ]] && supports_seal "$ALMANAC_BIN"; then
+      BIN="$ALMANAC_BIN"
+    fi
     if [[ -z $BIN ]]; then
       BIN=$(command -v almanac || true)
+      supports_seal "$BIN" || BIN=""
     fi
-    if [[ -z $BIN && -x "${HOME}/Projects/almanac/target/release/almanac" ]]; then
-      BIN="${HOME}/Projects/almanac/target/release/almanac"
-    fi
-    if [[ -z $BIN && -x "${HOME}/Projects/almanac/target/debug/almanac" ]]; then
-      BIN="${HOME}/Projects/almanac/target/debug/almanac"
+    if [[ -z $BIN ]]; then
+      for BIN in "$HOME/Projects/almanac/target/release/almanac" "$HOME/Projects/almanac/target/debug/almanac"; do
+        supports_seal "$BIN" && break
+        BIN=""
+      done
     fi
     [[ -n $BIN ]] || fail "sealed calendar needs the almanac binary"
     UID_VALUE=$(python3 -c 'import json,sys,uuid

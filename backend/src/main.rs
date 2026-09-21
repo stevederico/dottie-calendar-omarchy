@@ -370,21 +370,32 @@ fn almanac_id_for_url(url: &str) -> Option<String> {
     None
 }
 
+fn binary_seals(path: &std::path::Path) -> bool {
+    let Ok(bytes) = std::fs::read(path) else {
+        return false;
+    };
+    let needle = b"almanac-seal-v1";
+    bytes.windows(needle.len()).any(|window| window == needle)
+}
+
 fn open_seal(calendar_id: &str, uid: &str, seal: &str) -> Result<String, String> {
-    let bin = env::var("ALMANAC_BIN").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| {
-        if let Some(home) = env::var("HOME").ok() {
-            for name in ["release", "debug"] {
-                let built = PathBuf::from(&home)
-                    .join("Projects/almanac/target")
-                    .join(name)
-                    .join("almanac");
-                if built.is_file() {
-                    return built.to_string_lossy().into_owned();
+    let bin = env::var("ALMANAC_BIN")
+        .ok()
+        .filter(|s| !s.is_empty() && binary_seals(std::path::Path::new(s)))
+        .unwrap_or_else(|| {
+            if let Some(home) = env::var("HOME").ok() {
+                for name in ["release", "debug"] {
+                    let built = PathBuf::from(&home)
+                        .join("Projects/almanac/target")
+                        .join(name)
+                        .join("almanac");
+                    if binary_seals(&built) {
+                        return built.to_string_lossy().into_owned();
+                    }
                 }
             }
-        }
-        "almanac".into()
-    });
+            "almanac".into()
+        });
     let mut child = Command::new(&bin);
     child.args(["open", "--cal", calendar_id, "--kind", "event", "--uid", uid]);
     if let Ok(config) = env::var("ALMANAC_CONFIG") {

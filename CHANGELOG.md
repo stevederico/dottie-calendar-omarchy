@@ -1,3 +1,7 @@
+0.5.0
+
+  Prefer sealing binary
+
 0.4.0
 
   Open sealed feeds
