@@ -1,3 +1,8 @@
+0.4.0
+
+  Open sealed feeds
+  Seal Almanac writes
+
 0.3.0
 
   Add event editor

@@ -118,7 +118,51 @@ elif [[ $CMD == delete ]]; then
 fi
 
 TMP=$(mktemp)
-trap 'rm -f "$TMP"' EXIT
+SEALFILE=""
+trap 'rm -f "$TMP" "$SEALFILE"' EXIT
+
+if [[ $CMD == post ]]; then
+  INFO=$(curl -sS --max-time 20 -A "$UA" -H "Authorization: Bearer ${KEY}" "${EVENTS%/*}") || fail "Almanac request failed"
+  FEED=$(printf '%s' "$INFO" | python3 -c 'import json,sys
+try:
+    data=json.loads(sys.stdin.read() or "{}")
+except Exception:
+    sys.exit(1)
+sys.stdout.write(str(data.get("feed") or "plain") if isinstance(data, dict) else "plain")') || fail "Almanac request failed"
+  if [[ $FEED == seal ]]; then
+    BIN="${ALMANAC_BIN:-}"
+    if [[ -z $BIN ]]; then
+      BIN=$(command -v almanac || true)
+    fi
+    if [[ -z $BIN && -x "${HOME}/Projects/almanac/target/release/almanac" ]]; then
+      BIN="${HOME}/Projects/almanac/target/release/almanac"
+    fi
+    if [[ -z $BIN && -x "${HOME}/Projects/almanac/target/debug/almanac" ]]; then
+      BIN="${HOME}/Projects/almanac/target/debug/almanac"
+    fi
+    [[ -n $BIN ]] || fail "sealed calendar needs the almanac binary"
+    UID_VALUE=$(python3 -c 'import json,sys,uuid
+raw=open(sys.argv[1]).read()
+try:
+    data=json.loads(raw)
+except Exception:
+    data={}
+uid=str(data.get("uid") or "").strip() if isinstance(data, dict) else ""
+if not uid:
+    uid="evt-"+uuid.uuid4().hex
+sys.stdout.write(uid)' "$BODYFILE") || fail "bad event"
+    SEALFILE=$(mktemp)
+    ALMANAC_CREDS="$CONFIG" "$BIN" seal --cal "$CAL_ID" --kind event --uid "$UID_VALUE" <"$BODYFILE" >"$SEALFILE" || fail "could not seal the event"
+    python3 -c 'import json,sys
+seal=open(sys.argv[1]).read().strip()
+json.dump({"seal": seal}, sys.stdout)
+' "$SEALFILE" >"$TMP.body"
+    mv "$TMP.body" "$SEALFILE"
+    URL="${EVENTS}/${UID_VALUE}"
+    METHOD="PUT"
+    BODYFILE="$SEALFILE"
+  fi
+fi
 
 CURL_ARGS=(-sS --max-time 20 -A "$UA" -o "$TMP" -w "%{http_code}" -X "$METHOD" -H "Authorization: Bearer ${KEY}" "$URL")
 if [[ $CMD == post ]]; then

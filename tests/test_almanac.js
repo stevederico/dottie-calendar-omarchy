@@ -94,6 +94,11 @@ test("almanac-events.sh posts and deletes without leaking the key", async () => 
     req.on("data", (c) => { raw += c })
     req.on("end", () => {
       seen.push({ method: req.method, url: req.url, ua: req.headers["user-agent"], auth: req.headers.authorization, body: raw })
+      if (req.method === "GET") {
+        res.writeHead(200, { "content-type": "application/json" })
+        res.end(JSON.stringify({ id: "cal_test", feed: "plain" }))
+        return
+      }
       if (req.method === "POST") {
         res.writeHead(201, { "content-type": "application/json" })
         res.end(JSON.stringify({ uid: "evt-new", summary: "Call" }))
@@ -113,14 +118,54 @@ test("almanac-events.sh posts and deletes without leaking the key", async () => 
   const feed = await runScript(["feed", "--cal", "cal_test"], { ALMANAC_CONFIG: config })
   server.close()
   fs.rmSync(dir, { recursive: true, force: true })
-  assert.equal(created.status, 0, created.stdout)
+  assert.equal(created.status, 0, created.stderr + created.stdout)
   assert.match(created.stdout, /evt-new/)
   assert.equal(created.stdout.includes("test-key"), false)
   assert.equal(removed.status, 0, removed.stdout)
-  assert.equal(seen[0].method, "POST")
-  assert.equal(seen[0].url, "/v1/c/cal_test/events")
-  assert.equal(seen[0].auth, "Bearer test-key")
-  assert.match(seen[0].ua, /dottie-calendar/)
-  assert.equal(seen[1].method, "DELETE")
+  assert.equal(seen[0].method, "GET")
+  assert.equal(seen[1].method, "POST")
+  assert.equal(seen[1].url, "/v1/c/cal_test/events")
+  assert.equal(seen[1].auth, "Bearer test-key")
+  assert.match(seen[1].ua, /dottie-calendar/)
+  assert.equal(seen[2].method, "DELETE")
   assert.match(feed.stdout, /feed\.ics/)
+})
+
+test("almanac-events.sh seals a post when the calendar feed is seal", async () => {
+  const bin = process.env.ALMANAC_BIN
+    || path.join(process.env.HOME, "Projects/almanac/target/debug/almanac")
+  if (!fs.existsSync(bin)) return
+  const seen = []
+  const server = http.createServer((req, res) => {
+    let raw = ""
+    req.on("data", (c) => { raw += c })
+    req.on("end", () => {
+      seen.push({ method: req.method, url: req.url, body: raw })
+      if (req.method === "GET") {
+        res.writeHead(200, { "content-type": "application/json" })
+        res.end(JSON.stringify({ id: "cal_test", feed: "seal" }))
+        return
+      }
+      res.writeHead(201, { "content-type": "application/json" })
+      res.end(raw)
+    })
+  })
+  const port = await listen(server)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dottie-cal-"))
+  const config = writeConfig(dir, port)
+  const body = path.join(dir, "body.json")
+  fs.writeFileSync(body, JSON.stringify({ summary: "Call", start: "2026-09-22T09:00:00-07:00" }))
+  const created = await runScript(["post", "--cal", "cal_test", "--body-file", body], {
+    ALMANAC_CONFIG: config,
+    ALMANAC_BIN: bin
+  })
+  server.close()
+  fs.rmSync(dir, { recursive: true, force: true })
+  assert.equal(created.status, 0, created.stderr + created.stdout)
+  assert.equal(seen[1].method, "PUT")
+  assert.match(seen[1].url, /^\/v1\/c\/cal_test\/events\/evt-/)
+  const sent = JSON.parse(seen[1].body)
+  assert.match(sent.seal, /^alm1\./)
+  assert.equal(seen[1].body.includes("Call"), false)
+  assert.equal(created.stdout.includes("test-key"), false)
 })

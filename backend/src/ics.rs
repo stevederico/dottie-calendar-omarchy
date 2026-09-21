@@ -11,6 +11,7 @@ struct RawEvent {
     end_hm: String,
     rrule: Option<RRule>,
     exdates: Vec<i32>,
+    seal: String,
 }
 
 #[derive(Clone, Copy)]
@@ -53,6 +54,9 @@ pub fn events_from_ics(
 ) -> Vec<Event> {
     let mut out = Vec::new();
     for raw in parse_vevents(ics) {
+        if !raw.seal.is_empty() {
+            continue;
+        }
         for (ord, civil) in expand(&raw, window_start, window_end) {
             if raw.exdates.contains(&ord) {
                 continue;
@@ -80,6 +84,23 @@ pub fn events_from_ics(
     out
 }
 
+pub struct SealedItem {
+    pub uid: String,
+    pub seal: String,
+}
+
+/// Shells that carry `X-ALMANAC-SEAL`. The plaintext is not in the feed.
+pub fn sealed_items(ics: &str) -> Vec<SealedItem> {
+    parse_vevents(ics)
+        .into_iter()
+        .filter(|event| !event.seal.is_empty() && !event.uid.is_empty())
+        .map(|event| SealedItem {
+            uid: event.uid,
+            seal: event.seal,
+        })
+        .collect()
+}
+
 fn parse_vevents(ics: &str) -> Vec<RawEvent> {
     let lines = unfold(ics);
     let mut events = Vec::new();
@@ -97,6 +118,7 @@ fn parse_vevents(ics: &str) -> Vec<RawEvent> {
                 end_hm: String::new(),
                 rrule: None,
                 exdates: Vec::new(),
+                seal: String::new(),
             });
             continue;
         }
@@ -113,6 +135,7 @@ fn parse_vevents(ics: &str) -> Vec<RawEvent> {
         let (name, params, value) = split_prop(&line);
         match name.as_str() {
             "UID" => event.uid = value,
+            "X-ALMANAC-SEAL" => event.seal = value,
             "SUMMARY" => event.title = unescape_ics(&value),
             "STATUS" if value.eq_ignore_ascii_case("CANCELLED") => event.uid.clear(),
             "DTSTART" => apply_dt(event, &params, &value, true),
