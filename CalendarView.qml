@@ -4,6 +4,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
+import "Almanac.js" as Almanac
 
 // Month grid + subscribed calendars. Chips in cells like macOS Calendar.
 Item {
@@ -86,6 +87,15 @@ Item {
   property string statusText: ""
   property var calQueue: []
   property string calKind: ""
+  property var hostedCalendars: []
+  property string hostedCalendarId: hostedCalendars.length ? hostedCalendars[0].id : ""
+  property var editingEvent: null
+  property string eventError: ""
+  property bool eventSaving: false
+  property int eventToken: 0
+  property var pendingEvent: null
+  readonly property string calendarsPath: (Quickshell.env("XDG_CONFIG_HOME") || ((Quickshell.env("HOME") || "") + "/.config")) + "/almanac/hosted-calendars.json"
+  readonly property string almanacBodyPath: (Quickshell.env("XDG_RUNTIME_DIR") || pluginDir) + "/dottie-calendar-almanac-body.json"
 
   function refresh() {
     var now = new Date()
@@ -186,6 +196,82 @@ Item {
     return Model.eventsForDay(eventsByDate, key)
   }
 
+  function eventUidOf(event) {
+    return Almanac.eventUid(event)
+  }
+
+  function canEditEvent(event) {
+    if (!hostedCalendarId) return false
+    if (!event || !event.id) return true
+    return Almanac.isWritable(event, calendars)
+  }
+
+  function openNewEvent() {
+    eventError = ""
+    editingEvent = {
+      id: "",
+      calendarId: "almanac",
+      dateKey: selectedKey,
+      title: "",
+      start: "09:00",
+      end: "10:00",
+      allDay: false
+    }
+  }
+
+  function openEvent(event) {
+    if (!event) return
+    eventError = ""
+    editingEvent = event
+  }
+
+  function closeEventEditor() {
+    editingEvent = null
+    eventError = ""
+    eventSaving = false
+    pendingEvent = null
+  }
+
+  function saveEvent(draft) {
+    if (eventSaving) return
+    if (!hostedCalendarId) {
+      eventError = "No Almanac calendar"
+      return
+    }
+    var built = Almanac.buildEventBody(draft)
+    if (built.error) {
+      eventError = built.error
+      return
+    }
+    eventSaving = true
+    eventError = ""
+    eventToken += 1
+    pendingEvent = { op: "post", token: eventToken }
+    almanacBodyFile.setText(JSON.stringify(built.body) + "\n")
+  }
+
+  function deleteEvent(draft) {
+    var uid = Almanac.eventUid(draft) || (editingEvent ? Almanac.eventUid(editingEvent) : "")
+    if (!uid || !hostedCalendarId || eventSaving) return
+    eventSaving = true
+    eventError = ""
+    eventToken += 1
+    pendingEvent = { op: "delete", token: eventToken }
+    almanacRemote.remove(hostedCalendarId, uid, eventToken)
+  }
+
+  function onAlmanacFinished(op, ok, body, token) {
+    if (!pendingEvent || token !== pendingEvent.token) return
+    pendingEvent = null
+    eventSaving = false
+    if (!ok) {
+      eventError = Almanac.errorMessage(body)
+      return
+    }
+    closeEventEditor()
+    runCal(["sync"])
+  }
+
   function runCal(args) {
     if (root.busy) {
       calQueue.push(args)
@@ -230,9 +316,13 @@ Item {
 
   Keys.onPressed: function (event) {
     if (event.key === Qt.Key_Escape) {
-      if (root.detailCalendar) root.detailCalendar = null
+      if (root.editingEvent) root.closeEventEditor()
+      else if (root.detailCalendar) root.detailCalendar = null
       else if (root.addingCalendar) root.closeAddForm()
       else root.closeRequested()
+      event.accepted = true
+    } else if (!root.editingEvent && (event.key === Qt.Key_N || event.text === "n" || event.text === "N")) {
+      root.openNewEvent()
       event.accepted = true
     } else if (event.key === Qt.Key_Left || event.text === "[") {
       root.moveStep(-1)
@@ -276,6 +366,39 @@ Item {
     onFileChanged: reload()
     onLoaded: root.applyEvents(text())
     onLoadFailed: root.applyEvents("")
+  }
+
+  FileView {
+    id: hostedFile
+    path: root.calendarsPath
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.hostedCalendars = Almanac.parseCalendars(text())
+    onLoadFailed: root.hostedCalendars = []
+  }
+
+  FileView {
+    id: almanacBodyFile
+    path: root.almanacBodyPath
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    onSaved: {
+      if (root.pendingEvent && root.pendingEvent.op === "post")
+        almanacRemote.post(root.hostedCalendarId, root.almanacBodyPath, root.pendingEvent.token)
+    }
+    onSaveFailed: {
+      root.eventSaving = false
+      root.eventError = "Could not write Almanac request"
+    }
+  }
+
+  AlmanacRemote {
+    id: almanacRemote
+    onFinished: function (op, ok, body, token) {
+      root.onAlmanacFinished(op, ok, body, token)
+    }
   }
 
   Process {
@@ -758,6 +881,28 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(4)
 
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: "New"
+              color: newMouse.containsMouse
+                ? Style.hoverStateColor(root.contentForeground, Color.accent)
+                : root.contentForeground
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.body
+              font.bold: true
+              leftPadding: Style.space(8)
+              rightPadding: Style.space(8)
+              topPadding: Style.space(4)
+              bottomPadding: Style.space(4)
+              MouseArea {
+                id: newMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.openNewEvent()
+              }
+            }
+
             PanelActionButton {
               iconText: "󰅁"
               tooltipText: "Previous " + root.stepLabel
@@ -914,6 +1059,13 @@ Item {
           width: ListView.view.width
           height: Style.space(44)
 
+          MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.openEvent(modelData)
+          }
+
           Rectangle {
             anchors.left: parent.left
             anchors.top: parent.top
@@ -999,5 +1151,11 @@ Item {
     anchors.fill: parent
     host: root
     calendar: root.detailCalendar
+  }
+
+  EventEditor {
+    anchors.fill: parent
+    host: root
+    event: root.editingEvent
   }
 }

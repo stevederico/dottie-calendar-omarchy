@@ -70,6 +70,13 @@ Item {
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
           }
+
+          MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.host.openEvent(modelData)
+          }
         }
       }
 
@@ -166,6 +173,13 @@ Item {
           color: root.fg
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
+        }
+
+        MouseArea {
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.host.openEvent(modelData)
         }
       }
     }

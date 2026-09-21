@@ -1,6 +1,8 @@
 # Dottie Calendar
 
-Omarchy calendar app. Day, week, month, and year. Local events plus ICS feeds.
+Omarchy calendar app. Day, week, month, and year. Almanac events plus ICS feeds.
+
+**New** (or `n`) adds an event on the selected day. Click an Almanac event to edit or delete. Writes go to Almanac over POST (Cloudflare blocks PATCH). Then the ICS feed syncs.
 
 Launch as **dottie** or **calendar**. Plugin id is `sd.calendar`.
 

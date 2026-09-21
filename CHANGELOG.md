@@ -1,3 +1,7 @@
+0.3.0
+
+  Add event editor
+
 0.2.2
 
   Update install URL for rename

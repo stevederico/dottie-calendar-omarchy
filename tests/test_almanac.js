@@ -1,0 +1,126 @@
+const test = require("node:test")
+const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const http = require("node:http")
+const os = require("node:os")
+const path = require("node:path")
+const { spawn } = require("node:child_process")
+const Almanac = require("../Almanac.js")
+
+function writeConfig(dir, port) {
+  const config = path.join(dir, "hosted-calendars.json")
+  fs.writeFileSync(config, JSON.stringify([{
+    id: "cal_test",
+    name: "Almanac",
+    key: "test-key",
+    write: `http://127.0.0.1:${port}/v1/c/cal_test/events`,
+    subscribe: `http://127.0.0.1:${port}/feed.ics`
+  }]))
+  return config
+}
+
+function listen(server) {
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => resolve(server.address().port))
+  })
+}
+
+function runScript(args, env) {
+  return new Promise((resolve) => {
+    const child = spawn("bash", [path.join(__dirname, "..", "scripts", "almanac-events.sh"), ...args], {
+      env: { ...process.env, ...env }
+    })
+    let stdout = ""
+    let stderr = ""
+    child.stdout.on("data", (c) => { stdout += c })
+    child.stderr.on("data", (c) => { stderr += c })
+    child.on("close", (status) => resolve({ status, stdout, stderr }))
+  })
+}
+
+test("parseCalendars keeps id name subscribe, drops key", () => {
+  const rows = Almanac.parseCalendars(JSON.stringify([
+    { id: "cal_1", name: "Almanac", key: "secret", subscribe: "https://feed", write: "https://w" }
+  ]))
+  assert.deepEqual(rows, [{ id: "cal_1", name: "Almanac", subscribe: "https://feed" }])
+})
+
+test("eventUid reads the middle of calendarId:uid:dateKey", () => {
+  assert.equal(Almanac.eventUid({
+    id: "almanac:evt-abc:2026-09-21",
+    calendarId: "almanac",
+    dateKey: "2026-09-21"
+  }), "evt-abc")
+})
+
+test("isWritable is Almanac feed or almanac id", () => {
+  assert.equal(Almanac.isWritable({ calendarId: "almanac" }, []), true)
+  assert.equal(Almanac.isWritable({ calendarId: "work" }, [
+    { id: "work", url: "https://almanac.dottie.ai/x.ics" }
+  ]), true)
+  assert.equal(Almanac.isWritable({ calendarId: "local" }, [
+    { id: "local", url: "" }
+  ]), false)
+})
+
+test("buildEventBody makes a timed POST body", () => {
+  const result = Almanac.buildEventBody({
+    title: "Dentist",
+    dateKey: "2026-09-22",
+    start: "09:00",
+    end: "09:45",
+    uid: "evt-1"
+  })
+  assert.equal(result.error, undefined)
+  assert.equal(result.body.summary, "Dentist")
+  assert.equal(result.body.uid, "evt-1")
+  assert.match(result.body.start, /^2026-09-22T09:00:00/)
+  assert.match(result.body.end, /^2026-09-22T09:45:00/)
+})
+
+test("buildEventBody all-day uses a date only", () => {
+  const result = Almanac.buildEventBody({
+    title: "Off",
+    dateKey: "2026-09-22",
+    allDay: true
+  })
+  assert.deepEqual(result.body, { summary: "Off", start: "2026-09-22", allDay: true })
+})
+
+test("almanac-events.sh posts and deletes without leaking the key", async () => {
+  const seen = []
+  const server = http.createServer((req, res) => {
+    let raw = ""
+    req.on("data", (c) => { raw += c })
+    req.on("end", () => {
+      seen.push({ method: req.method, url: req.url, ua: req.headers["user-agent"], auth: req.headers.authorization, body: raw })
+      if (req.method === "POST") {
+        res.writeHead(201, { "content-type": "application/json" })
+        res.end(JSON.stringify({ uid: "evt-new", summary: "Call" }))
+        return
+      }
+      res.writeHead(204)
+      res.end()
+    })
+  })
+  const port = await listen(server)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dottie-cal-"))
+  const config = writeConfig(dir, port)
+  const body = path.join(dir, "body.json")
+  fs.writeFileSync(body, JSON.stringify({ summary: "Call", start: "2026-09-22T09:00:00-07:00" }))
+  const created = await runScript(["post", "--cal", "cal_test", "--body-file", body], { ALMANAC_CONFIG: config })
+  const removed = await runScript(["delete", "--cal", "cal_test", "--uid", "evt-new"], { ALMANAC_CONFIG: config })
+  const feed = await runScript(["feed", "--cal", "cal_test"], { ALMANAC_CONFIG: config })
+  server.close()
+  fs.rmSync(dir, { recursive: true, force: true })
+  assert.equal(created.status, 0, created.stdout)
+  assert.match(created.stdout, /evt-new/)
+  assert.equal(created.stdout.includes("test-key"), false)
+  assert.equal(removed.status, 0, removed.stdout)
+  assert.equal(seen[0].method, "POST")
+  assert.equal(seen[0].url, "/v1/c/cal_test/events")
+  assert.equal(seen[0].auth, "Bearer test-key")
+  assert.match(seen[0].ua, /dottie-calendar/)
+  assert.equal(seen[1].method, "DELETE")
+  assert.match(feed.stdout, /feed\.ics/)
+})

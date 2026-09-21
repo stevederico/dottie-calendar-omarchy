@@ -118,6 +118,13 @@ Item {
               font.pixelSize: Math.max(10, Style.font.caption - 1)
               verticalAlignment: Text.AlignVCenter
             }
+
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.host.openEvent(modelData)
+            }
           }
         }
       }
@@ -222,6 +229,13 @@ Item {
               color: root.fg
               font.family: root.fontFamily
               font.pixelSize: Math.max(10, Style.font.caption)
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.host.openEvent(modelData)
             }
           }
         }
